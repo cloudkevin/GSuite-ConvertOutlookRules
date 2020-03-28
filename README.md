@@ -2,10 +2,10 @@
 Convert Outlook Rules to Gmail Filters
 
 ## Supported Outlook Conditions:
-'From Address'
-'Subject Contains'
-'Body Contains'
+'From Address'  
+'Subject Contains'  
+'Body Contains'  
 
 ## Supported Actions:
-CopyToFolder
+CopyToFolder  
 MoveToFolder
