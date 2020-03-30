@@ -1,3 +1,4 @@
+# [+]google api notes [+]
 # criteria.from='sender@example.com'	All emails from sender@example.com
 # criteria.size=10485760
 # criteria.sizeComparison='larger'	All emails larger than 10MB
@@ -6,13 +7,13 @@
 # criteria.query='"my important project"'	All emails containing the string my important project
 # criteria.negatedQuery='"secret knock"'	All emails that do not contain the string secret knock
 
-# ParseFromAddresses(r, mr);
-# ParseLabelMove(r, mr, storeName);
-# ParseLabelCopy(r, mr, storeName);
-# ParseSubject(r, mr);
-# ParseBody(r, mr);
+import win32com.client, csv, pickle, os.path
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
-import win32com.client, csv
+SCOPES = ['https://www.googleapis.com/auth/gmail.settings.basic']
+
 
 class OutlookRule:
 	def __init__(self, rule):
@@ -32,10 +33,6 @@ class OutlookRule:
 		self.hasAttachment = 'None'
 		self.query = rule.Conditions.Body.Text
 		self.negatedQuery = 'None'
-
-class GoogleRule:
-	def __init__(self):
-		self.name = 'GoogleRule'
 
 def get_rules(outlook):
 	ruleList = []
@@ -71,48 +68,66 @@ def show_rules(rules):
 		print(f"SizeOperator: {r.sizeCompare}")
 		print(f"HasAttachment: {r.hasAttachment}")
 
-# convert the rule to a G Suite label
-def convert_rules(rules):
-	print('\n')
-	print('Converting Rules...')
+def create_filter(rules):
+	service = generate_token()
 	for r in rules:
-		print('\n')
-		if r.fromAddress is not None:
-			print(f"From: {r.fromAddress[0]}")
-		print(f"Subject Query: {r.subjectText}")
-		print(f"Body Query: {r.bodyText}")
+		print(f"Converting rule {rules.index(r)+1}")
+		label_id = r.name # ID of user label to add
+		label_list = []
+		filter = {
+		'criteria': {},
+		'action': {}
+		}
+		if r.fromAddress != None:
+			filter['criteria']['from'] = r.fromAddress[0]
+		if r.subjectEnabled:
+			filter['criteria']['subject'] = r.subjectText
+		if r.bodyEnabled:
+			filter['criteria']['query'] = r.bodyText
 		if r.moveToFolderEnabled:
-			print(f"Move Destination: {r.moveToFolderPath}")
+			filter['action']['removeLabelIds'] = ['INBOX']
+			label_list.append(r.moveToFolderPath.split('\\').pop())
 		if r.copyToFolderEnabled:
-			print(f"Copy Destination: {r.copyToFolderPath}")
+			label_list.append(r.copyToFolderPath.split('\\').pop())
+		filter['action']['addLabelIds'] = label_list
+		print(filter)
+		# result = service.users().settings().filters().create(userId='me', body=filter).execute()
+		# print(f"Created filter: {result.get('id')}")
+
 
 def generate_csv(rules):
 	with open('OutlookRules.csv','a', newline='') as f1:
 		csv_writer = csv.writer(f1, delimiter=',')
 		header = ['Rule Name','IsEnabled?','SubjectEnabled','BodyEnabled','MoveToFolderEnabled','CopyToFolderEnabled']
 		csv_writer.writerow(header)
+		print('\n')
 		for r in rules:
 			print('Writing row....')
 			row = [r.name, r.ruleEnabled, r.subjectEnabled, r.bodyEnabled, r.moveToFolderEnabled, r.copyToFolderEnabled]
 			csv_writer.writerow(row)
 
+def generate_token():
+	creds = None
+	if os.path.exists('token.pickle'):
+		with open('token.pickle', 'rb') as token:
+			creds = pickle.load(token)
+	if not creds or not creds.valid:
+		if creds and creds.expired and creds.refresh_token:
+			creds.refresh(Request())
+		else:
+			flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+			creds = flow.run_local_server(port=0)
+		with open('token.pickle', 'wb') as token:
+			pickle.dump(creds, token)
+	service = build('gmail', 'v1', credentials=creds)
+	return service
 
 def main():
 	outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
 	rules = get_rules(outlook)
 	show_rules(rules)
 	generate_csv(rules)
-	convert_rules(rules)
-
-	
+	create_filter(rules)
 
 if __name__ == '__main__':
 	main()
-
-
-# y = outlook.GetNamespace("MAPI")
-
-# storeList = y.GetStores()
-# z = y.DefaultStore
-# a = z.GetRules()
-# b = a.item('TEST RULE')
